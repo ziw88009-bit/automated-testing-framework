@@ -1,0 +1,19 @@
+# Python
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# 虚拟环境
+.venv/
+venv/
+
+# 运行期生成的凭据/临时数据
+extract.yaml
+conf/config.ini
+
+# 生成的测试报告
+/report/
