@@ -1,126 +1,174 @@
 # Test-Automation-Framework
 
-不少录友感觉 冲大厂的开发岗会比较难，但又想去大厂工作。
+基于 Pytest 的接口自动化测试框架。测试用例以 **YAML 数据驱动** 方式编写,配合 **DebugTalk 动态函数**、**接口关联(extract)**、**多源断言**与 **Allure 报告**,并内置一套 **Flask Mock 服务**用于本地联调,开箱即可在无真实环境的情况下跑通完整链路。
 
-测开是一个选择，大厂测开的薪资和 开发基本是差不太多。
+## 环境要求
 
-又有录友问：那测开好还是开发好？
+| 组件 | 要求 |
+|---|---|
+| Python | 主框架 **>= 3.12**;运行 mock_server 需 **>= 3.13** |
+| 包管理器 | [uv](https://docs.astral.sh/uv/)(推荐,仓库已带 `uv.lock`)或 pip |
+| Allure CLI | 可选,生成 Allure 报告时需要(见下文「报告」) |
 
-我相信如果有能力冲 开发的录友 就不会问这个问题了吧。
+锁定版本:Python 3.12/3.13 均适配(pandas 2.2.3、numpy 2.2.1)。
 
-我只能说，如果自己能力或者学历不太行，想去大厂，测开相对来说 门槛低很多。
+## 快速开始
 
-之前星球里就有不少录友冲测开，在项目方向都是用开发岗的项目，来面试的。
+```bash
+# 1. 安装依赖(根目录)
+uv sync
+# 或: pip install .
 
-这次[知识星球](https://www.programmercarl.com/other/kstar.html)里给大家提供了专门准对测开的项目，**带大家从零开始手撸一个基于 Pytest 的自动化测试框架**。
+# 2. 创建配置文件(模板见下文「配置说明」)
+#    conf/config.ini —— 该文件已被 .gitignore 排除,需要手动创建
 
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-47-24.jpg)
+# 3. (可选)启动配套 Mock 服务
+cd mock_server/api_server
+uv sync --python 3.13
+uv run python base/flask_service.py   # 监听 127.0.0.1:8787
 
-项目在星球里已经发布了三个月了，不少星球录友已经用了这个项目。
+# 4. 运行测试(库内用例默认直连本地 Mock http://127.0.0.1:8787)
+cd ../..
+uv run pytest ./testcase
+# 或一键运行并生成 Allure 报告:
+uv run python run.py
+```
 
-这三个月期间，我们有陆续完善这个项目，这才正式在公众号发公布。
+## 配置说明
 
-本项目是使用python语言开发。
+### conf/config.ini
 
-也有录友会想，我转冲测开 是不是还要学习一下python？
+被 `.gitignore` 排除,不会随仓库分发,需按如下结构手动创建(所有值替换成你自己的环境):
 
-其实python很简单， 如果有C++或者Java基础，python的语法知识 两三天也就学的差不多了。
+```ini
+[api_envi]
+host = http://127.0.0.1:8787
 
-测试框架通常与具体公司的业务密切相关，本项目专栏将重点介绍通用的框架设计思路和技术实现，帮助你掌握构建测试框架的核心原理和方法。
+[MYSQL]
+host = *****
+port = 3306
+username = root
+password = *****
+database = zqsjfx
 
-## 一、接口测试的本质：功能测试的一部分
+[REDIS]
+host = 127.0.0.1
+port = 6379
+username = ""
+password = ""
+db = 0
 
-很多初学者在听到“接口测试”时，可能会感到困惑，认为这是一个完全独立于功能测试之外的测试类型。
+[CLICKHOUSE]
+host = *******
+port = 8123
+username = default
+password =
+timeout = 10
+db = default
 
-实际上，接口测试的本质仍然是功能测试。它只是将测试的对象从用户界面转移到了应用程序接口（API）上。
+[MongoDB]
+host = 127.0.0.1
+port = 27017
+username = admin
+password = *****
+database = admin
 
-换句话说，我们不再需要通过UI与系统交互，而是直接通过接口发送请求、接收响应，并验证响应结果是否符合预期。
+[EMAIL]
+host = smtp.163.com
+port = 25
+user = 发件人邮箱地址
+passwd = 邮箱授权码(非登录密码)
+addressee = 收件邮箱,多个用;隔开
+subject = 接口测试
 
-## 二、从接口文档入手：测试用例的设计与实现
+[SSH]
+host = ******
+port = 22
+username = root
+password = *******
+timeout = 10
+command = cat /logs/web_app/zjjtsjzf/zjjtsjzf-api/common-default.log
 
-接口测试的第一步，从来都是获取接口文档。一个完整的接口文档通常包含以下几部分信息：
+[REPORT_TYPE]
+; 默认为 allure,生成 Allure 报告;设为 tm,生成 tmreport 报告
+type = allure
+```
 
-* 接口名称
-* 接口地址
-* 请求方法（GET, POST, PUT, DELETE等）
-* 请求头信息
-* 请求参数（必选参数与可选参数）
-* 返回值及其数据结构
+### conf/setting.py 常用开关
 
-测试用例的设计围绕着如何验证接口的功能展开。我们通常会从以下几个方面入手：
+| 配置项 | 说明 | 默认 |
+|---|---|---|
+| `REPORT_TYPE` | 报告风格:`allure` / `tm` | `allure` |
+| `dd_msg` | 是否在测试结束后推送钉钉消息 | `False` |
+| `API_TIMEOUT` | 接口超时时间(秒) | `60` |
+| `SHEET_ID` | Excel 数据读取的 sheet 序号 | `0` |
+| `FILE_PATH` | 日志、报告、Excel、SQL 等各类文件路径 | - |
 
-1、 单接口测试：验证某一个接口在不同参数组合下的行为是否符合预期。测试点包括：
+## 编写测试用例
 
-* **正向测试**：使用正确的参数进行请求，验证返回值是否符合预期。
-* **反向测试**：使用错误或异常参数进行请求，验证接口是否能正确处理异常情况。
-* **边界测试**：例如对于要求固定长度的参数（如身份证号），测试其在不同长度下的响应情况。
+用例只需维护 YAML 文件,由 `pytest.mark.parametrize` + `get_testcase_yaml()` 参数化执行,基本不用写 Python 代码:
 
-2. 业务逻辑测试：验证多个接口之间的协同工作。
+```yaml
+- baseInfo:
+    api_name: 电网系统登录
+    url: /coupApply/cms/login_dw
+    method: post
+    header:
+      Content-Type: application/json;charset=UTF-8
+  testCase:
+    - case_name: 检查登录正常
+      json:
+        username: test123
+        password: qwe666
+      validation:
+        - contains: { 'msg': '调用成功' }
+      extract:
+        user_token: $.data.user_token   # 提取响应字段,写入 extract.yaml
+```
 
-例如，商品下单流程涉及多个接口，如库存检查、订单创建、支付确认等。这些接口之间存在依赖关系，测试时需要保证每个步骤的返回值都正确传递给下一个接口。
+```python
+@pytest.mark.parametrize('base_info,testcase', get_testcase_yaml('./testcase/ProductManager/login_dw.yaml'))
+def test_login_dw(self, base_info, testcase):
+    RequestBase().specification_yaml(base_info, testcase)
+```
 
-## 三、接口调试与自动化：从Postman到持续集成
+## 技术亮点
 
-在正式编写自动化测试脚本之前，手动调试接口是不可或缺的一步。
+- **YAML 数据驱动**:一个 YAML 文件承载接口信息(baseInfo)+ 多条用例(testCase),`get_testcase_yaml` 自动拆分参数化,测试点与代码分离,新增用例零代码。
+- **DebugTalk 动态函数**:在 YAML 中以 `${func(args)}` 形式调用 `common/debugtalk.py` 中定义的任意函数(取当前时间、随机数、读写数据等),`apiutil_business.replace_load` 自动解析替换。
+- **接口关联**:用例 `extract` 段用 JSONPath 从响应中提取变量(如登录 token)写入 `extract.yaml`,后续用例通过 `${get_extract_yaml(key)}` 引用,实现跨接口参数传递;`conftest.py` 的 session 级 fixture 会在每次运行前清空该文件。
+- **多源断言**:`validation` 段支持 `contains`、`eq` 等多种断言方式,同时封装了 MySQL / Redis / ClickHouse / MongoDB / SSH 连接工具,可直接对数据库结果做二次校验。
+- **报告与通知**:Allure(`allure.feature/story/dynamic.title` 组织用例层级)+ tmreport 双风格报告;测试结束自动打印摘要,可扩展推送到钉钉(`common/dingRobot.py`)、邮件(`common/semail.py`),并支持 Jenkins 集成(`common/Pjenkins.py`)。
+- **配套 Mock 服务**:`mock_server/` 是基于 Flask 的接口 Mock(带 JWT 鉴权、faker 造数),覆盖库内用例所用接口,默认 `api_envi.host` 即指向它,实现环境隔离、一键本地联调。
+- **工程化**:uv 管理依赖与锁定版本、pytest.ini 统一收集规则、Excel/CSV/YAML/XML 多种数据源读取(`common/handleExcel.py`、`operationcsv.py`、`operxml.py`)。
 
-工具如Postman、JMeter等可以帮助我们快速验证接口的功能。
+## 目录结构
 
-通过这些工具，我们可以确认接口是否正常工作，参数是否正确传递，以及返回值是否符合预期。
+```
+├── base/              请求执行引擎、接口调用封装
+├── common/            通用模块:断言/日志/请求/钉钉/邮件/Jenkins/各类文件读写
+├── conf/              config.ini(本地配置,不入库)、setting.py、operationConfig.py
+├── data/              测试数据:Excel、CSV、YAML、SQL(xml)
+├── testcase/          测试用例:YAML 用例 + pytest 脚本
+├── mock_server/       Flask Mock 服务(独立子项目,Python >= 3.13)
+├── report/            生成的测试报告(不入库)
+├── run.py             一键运行入口(Allure / tm 报告)
+├── conftest.py        session 级 fixture:清空 extract、清理报告、结果摘要
+├── environment.xml    Allure 环境信息(运行写入 report/temp)
+├── extract.yaml       运行时提取的接口关联变量(不入库,自动生成)
+├── pyproject.toml / uv.lock   依赖声明与锁定
+└── pytest.ini         pytest 收集规则
+```
 
-自动化测试的实现通常是将手动测试的步骤脚本化，并在代码中实现。
+## 报告
 
-例如，使用Python的requests库，我们可以轻松地编写自动化测试脚本，并将这些脚本集成到持续集成（CI）系统中，如Jenkins、GitLab CI等。
+- **Allure 模式**(默认):`python run.py` 或 `REPORT_TYPE=allure` 时,执行 `pytest --alluredir ./report/temp` 后调用 `allure serve` 自动打开报告。需先安装 Allure CLI(如 `scoop install allure` / `brew install allure`)。
+- **tm 模式**:`conf/config.ini` 的 `[REPORT_TYPE] type = tm` 后运行 `python run.py`,生成 `report/tmreport/testReport.html`(依赖 `pytest-tmreport` 插件)。
+- 直接执行 `uv run pytest ./testcase` 则只在控制台输出结果,不生成报告。
 
-通过CI，我们可以设定每日定时执行测试，并将测试结果推送到团队的沟通工具（如钉钉、Slack）中，确保所有成员都能及时了解到项目的健康状态。
+## 常见问题
 
-## 项目专栏
-
-接口测试是软件测试的一个重要组成部分，也是确保系统稳定性与可靠性的重要手段。
-
-我们将深入探讨如何通过代码实现接口测试的自动化，并逐步搭建一个完善的接口测试框架，帮助你在项目中更高效地进行测试工作。
-
-项目专栏在「简历写法」 下给大家列出来，指出项目在简历上应该突出什么：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-48-26.jpg)
-
-
-在给出具体的简历写法：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-48-54.jpg)
-
-这种测试框架的项目，已经要凸显出 性能优化的点：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-49-21.jpg)
-
-环境配置，很多录友做项目，配置环境，第一步就卡助了，专栏给出详细的操作步骤：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-49-44.jpg)
-
-项目代码看不懂怎么办？
-
-专栏有专门一个章节，帮助大家 梳理项目代码的逻辑，各个模块的数据流如下：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-50-07.jpg)
-
-做完该项目，面试中大概率会有哪些面试问题，以及如何回答，也列出好了：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-50-31.jpg)
-
-**专栏中的项目面试题都掌握的话，这个项目在面试中基本没问题**。
-
-当然项目专栏会对本项目代码做详细的讲解：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-50-55.jpg)
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-51-17.jpg)
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-51-40.jpg)
-
-最后如果大家想把这个项目做的更有深度，项目专栏最后一栏【项目优化】给大家指明 可以继续优化的点：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-52-04.jpg)
-
-## 获取本项目专栏
-
-**本文档仅为星球内部专享，大家可以加入[知识星球](https://www.programmercarl.com/other/kstar.html)里获取，在星球置顶一**。
-
+- **找不到接口地址/URL 为空**:`conf/config.ini` 未创建或 `[api_envi] host` 未配置,请先按模板创建。
+- **`allure` 命令找不到**:Allure 报告模式需要本机安装 Allure CLI;只想要 console 结果可直接 `uv run pytest ./testcase`。
+- **mock_server 无法启动**:需要 Python >= 3.13,且在其目录下单独 `uv sync`。
+- **用例运行报中文乱码**:YAML 文件请确保为 UTF-8 编码(见 `common/readyaml.py` 的编码检查)。
